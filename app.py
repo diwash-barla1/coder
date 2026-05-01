@@ -82,3 +82,8 @@ def chat(msg: Msg):
     
     chat_memory.append({"role": "assistant", "content": reply})
     return {"reply": reply}
+
+if __name__ == '__main__':
+    # Hugging Face Spaces default port is 7860
+    port = int(os.environ.get("PORT", 7860))
+    app.run(host='0.0.0.0', port=port, debug=True)
