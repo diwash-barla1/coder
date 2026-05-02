@@ -141,19 +141,30 @@ def web_chat(msg: UIMsg):
     return {"reply": bot_reply, "key_switched": switched}
 
 # --- 🚦 THE MASTER ROUTER FOR AIDER ---
+# --- 🚦 THE MASTER ROUTER FOR AIDER ---
 @app.post("/v1/chat/completions")
 def openai_api(req: OpenAIRequest):
     formatted_messages = [{"role": m.role, "content": m.content} for m in req.messages]
     
-    # 'openai/' प्रिफिक्स हटाना
+    # 💉 THE INJECTION: एंटी-चैटबॉट वैक्सीन (सिर्फ Aider के लिए)
+    # हम यूज़र के सबसे आखिरी मैसेज के अंत में चुपके से अपना सख्त कमांड चिपका देंगे
+    if formatted_messages and formatted_messages[-1]["role"] == "user":
+                strict_injection = (
+            "\n\n[CRITICAL SYSTEM DIRECTIVE]: You are executing inside the Aider terminal CLI. "
+            "1. If the user requests code modifications, output ONLY the exact code edits in the requested format. No yapping or explanations. "
+            "2. If the user asks a question or wants to discuss logic, answer concisely and professionally. "
+            "3. NEVER act like a customer service chatbot. NEVER offer to run terminal/git commands. NEVER tell the user to 'copy-paste' code manually. Act as a direct CLI backend."
+        )
+        formatted_messages[-1]["content"] += strict_injection
+
     clean_model_name = req.model.replace("openai/", "")
     
     # 🧠 स्मार्ट राऊटिंग लॉजिक
     if "gemini" in clean_model_name.lower():
-        print(f"Routing to Gemini API -> Model: {clean_model_name}")
+        print(f"Aider Request -> Routing to Gemini ({clean_model_name}) with Injection 💉")
         bot_reply, _ = get_gemini_response(formatted_messages, clean_model_name, req.max_tokens, req.temperature)
     else:
-        print(f"Routing to Hugging Face API -> Model: {clean_model_name}")
+        print(f"Aider Request -> Routing to HF ({clean_model_name}) with Injection 💉")
         bot_reply, _ = get_hf_response(formatted_messages, clean_model_name, req.max_tokens, req.temperature)
     
     return {
