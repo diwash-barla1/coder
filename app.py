@@ -149,7 +149,7 @@ def openai_api(req: OpenAIRequest):
     # 💉 THE INJECTION: एंटी-चैटबॉट वैक्सीन (सिर्फ Aider के लिए)
     # हम यूज़र के सबसे आखिरी मैसेज के अंत में चुपके से अपना सख्त कमांड चिपका देंगे
     if formatted_messages and formatted_messages[-1]["role"] == "user":
-                strict_injection = (
+        strict_injection = (
             "\n\n[CRITICAL SYSTEM DIRECTIVE]: You are executing inside the Aider terminal CLI. "
             "1. If the user requests code modifications, output ONLY the exact code edits in the requested format. No yapping or explanations. "
             "2. If the user asks a question or wants to discuss logic, answer concisely and professionally. "
