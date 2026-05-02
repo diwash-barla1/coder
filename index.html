@@ -11,14 +11,21 @@
         .user { background: #334155; align-self: flex-end; margin-left: auto; }
         .bot { background: #1e293b; border: 1px solid #334155; }
         .system { background: #7f1d1d; color: #fca5a5; font-size: 12px; text-align: center; border-radius: 8px; margin: 5px auto; padding: 5px 10px; width: fit-content; }
-        .input-box { padding: 20px; background: #1e293b; display: flex; gap: 10px; }
-        input { flex: 1; background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; outline: none; }
+        .input-box { padding: 20px; background: #1e293b; display: flex; gap: 10px; flex-wrap: wrap; }
+        select { background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; outline: none; cursor: pointer; font-weight: bold; }
+        input { flex: 1; background: #0f172a; border: 1px solid #334155; color: white; padding: 12px; border-radius: 8px; outline: none; min-width: 200px; }
         button { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
     <div id="chat"></div>
     <div class="input-box">
+        <select id="modelSelect">
+            <option value="Qwen/Qwen2.5-Coder-32B-Instruct">HF: Qwen 32B Coder</option>
+            <option value="gemini-1.5-pro">Google: Gemini 1.5 Pro</option>
+            <option value="gemini-2.5-flash">Google: Gemini 2.5 Flash</option>
+        </select>
+        
         <input type="text" id="userInput" placeholder="Partner, command do..." onkeypress="if(event.key === 'Enter') send()">
         <button onclick="send()">Send</button>
     </div>
@@ -26,25 +33,31 @@
         async function send() {
             const input = document.getElementById('userInput');
             const chat = document.getElementById('chat');
+            const modelSelect = document.getElementById('modelSelect'); // Dropdown की वैल्यू ली
+            
             if(!input.value) return;
             
             const text = input.value;
+            const selectedModel = modelSelect.value; 
+            
             chat.innerHTML += `<div class="bubble user">${text}</div>`;
             input.value = '';
             chat.scrollTop = chat.scrollHeight;
 
             try {
+                // Backend को मैसेज के साथ मॉडल का नाम भी भेज रहे हैं
                 const res = await fetch('/chat', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({text: text})
+                    body: JSON.stringify({text: text, model: selectedModel}) 
                 });
                 const data = await res.json();
                 
                 if(data.key_switched) {
                     chat.innerHTML += `<div class="system">⚠️ Rate Limit Hit: Auto-switched API Key</div>`;
                 }
-                chat.innerHTML += `<div class="bubble bot">${data.reply}</div>`;
+                // रिप्लाई में मॉडल का नाम भी छोटा सा दिखा देते हैं ताकि कन्फर्म रहे
+                chat.innerHTML += `<div class="bubble bot"><small style="color: #38bdf8;">[${selectedModel}]</small><br><br>${data.reply}</div>`;
             } catch (error) {
                 chat.innerHTML += `<div class="system">Error connecting to server!</div>`;
             }
