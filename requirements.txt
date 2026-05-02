@@ -1,4 +1,5 @@
 fastapi
 uvicorn
-huggingface_hub
 pydantic
+requests
+huggingface_hub
