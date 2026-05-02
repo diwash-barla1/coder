@@ -36,6 +36,7 @@ chat_memory = [{"role": "system", "content": "You are an advanced AI coding part
 # --- Pydantic Models ---
 class UIMsg(BaseModel):
     text: str
+    model: str = "Qwen/Qwen2.5-Coder-32B-Instruct" # अगर UI से नाम ना आये तो यह डिफ़ॉल्ट रहेगा
 
 class OpenAIMessage(BaseModel):
     role: str
@@ -126,8 +127,15 @@ def web_chat(msg: UIMsg):
     global chat_memory
     chat_memory.append({"role": "user", "content": msg.text})
     
-    # Web UI के लिए बाय डिफ़ॉल्ट हम HF का Qwen मॉडल यूज़ कर रहे हैं
-    bot_reply, switched = get_hf_response(chat_memory, "Qwen/Qwen2.5-Coder-32B-Instruct", 2048, 0.7)
+    clean_model_name = msg.model.replace("openai/", "")
+    
+    # 🧠 UI के लिए भी स्मार्ट राऊटिंग!
+    if "gemini" in clean_model_name.lower():
+        print(f"UI Request -> Routing to Gemini ({clean_model_name})")
+        bot_reply, switched = get_gemini_response(chat_memory, clean_model_name, 8192, 0.7)
+    else:
+        print(f"UI Request -> Routing to HF ({clean_model_name})")
+        bot_reply, switched = get_hf_response(chat_memory, clean_model_name, 4096, 0.7)
     
     chat_memory.append({"role": "assistant", "content": bot_reply})
     return {"reply": bot_reply, "key_switched": switched}
