@@ -149,11 +149,16 @@ def openai_api(req: OpenAIRequest):
     # 💉 THE INJECTION: एंटी-चैटबॉट वैक्सीन (सिर्फ Aider के लिए)
     # हम यूज़र के सबसे आखिरी मैसेज के अंत में चुपके से अपना सख्त कमांड चिपका देंगे
     if formatted_messages and formatted_messages[-1]["role"] == "user":
+    # 💉 THE AIDER-SYNCED INJECTION
         strict_injection = (
-            "\n\n[CRITICAL SYSTEM DIRECTIVE]: You are executing inside the Aider terminal CLI. "
-            "1. If the user requests code modifications, output ONLY the exact code edits in the requested format. No yapping or explanations. "
-            "2. If the user asks a question or wants to discuss logic, answer concisely and professionally. "
-            "3. NEVER act like a customer service chatbot. NEVER offer to run terminal/git commands. NEVER tell the user to 'copy-paste' code manually. Act as a direct CLI backend."
+            "\n\n[AIDER CONTEXT ENFORCEMENT]: "
+            "You are working as an Aider-compatible backend. "
+            "1. FORMAT: Always use the exact SEARCH/REPLACE block format as specified in your system instructions. "
+            "2. CONCISENESS: Aider expects only the necessary code changes. Do not provide explanations, justifications, or conversational filler. "
+            "3. MATCHING: Your SEARCH block must be a 100% verbatim match of the existing code, including every space, comment, and indent. "
+            "4. SCOPE: If the user asks a question, answer in 1 concise sentence. If they provide a coding task, output ONLY the blocks. "
+            "5. NO META-COMMENTARY: Do not talk about being an AI or your limitations. Just execute the edits."
+            "\nFocus on high-fidelity code output to ensure the Aider parser succeeds."
         )
         formatted_messages[-1]["content"] += strict_injection
 
