@@ -158,6 +158,7 @@ def openai_api(req: OpenAIRequest):
             "3. MATCHING: Your SEARCH block must be a 100% verbatim match of the existing code, including every space, comment, and indent. "
             "4. SCOPE: If the user asks a question, answer in 1 concise sentence. If they provide a coding task, output ONLY the blocks. "
             "5. NO META-COMMENTARY: Do not talk about being an AI or your limitations. Just execute the edits."
+            "6. ACTIONS: If the task requires a terminal action (like git push or pip install), provide the exact shell command. Do not ask for unrelated files like HTML or docs unless specifically needed for the task. "
             "\nFocus on high-fidelity code output to ensure the Aider parser succeeds."
         )
         formatted_messages[-1]["content"] += strict_injection
