@@ -149,17 +149,17 @@ def openai_api(req: OpenAIRequest):
     # 💉 THE INJECTION: एंटी-चैटबॉट वैक्सीन (सिर्फ Aider के लिए)
     # हम यूज़र के सबसे आखिरी मैसेज के अंत में चुपके से अपना सख्त कमांड चिपका देंगे
     if formatted_messages and formatted_messages[-1]["role"] == "user":
-    # 💉 THE AIDER-SYNCED INJECTION
+           # 💉 V3: THE ROBOT PROTOCOL (Ultra-Strict)
         strict_injection = (
-            "\n\n[AIDER CONTEXT ENFORCEMENT]: "
-            "You are working as an Aider-compatible backend. "
-            "1. FORMAT: Always use the exact SEARCH/REPLACE block format as specified in your system instructions. "
-            "2. CONCISENESS: Aider expects only the necessary code changes. Do not provide explanations, justifications, or conversational filler. "
-            "3. MATCHING: Your SEARCH block must be a 100% verbatim match of the existing code, including every space, comment, and indent. "
-            "4. SCOPE: If the user asks a question, answer in 1 concise sentence. If they provide a coding task, output ONLY the blocks. "
-            "5. NO META-COMMENTARY: Do not talk about being an AI or your limitations. Just execute the edits."
-            "6. ACTIONS: If the task requires a terminal action (like git push or pip install), provide the exact shell command. Do not ask for unrelated files like HTML or docs unless specifically needed for the task. "
-            "\nFocus on high-fidelity code output to ensure the Aider parser succeeds."
+            "\n\n[SYSTEM_PROTOCOL_ACTIVE]:"
+            "\n1. IDENTITY: You are a headless CLI code-engine for Aider. You have NO personality."
+            "\n2. ZERO-YAPPING: Forbidden to use words like 'Sure', 'Okay', 'I understand', 'Modified', or 'Here is'."
+            "\n3. OUTPUT-ONLY: If task is CODE, output ONLY SEARCH/REPLACE blocks. If task is SHELL, output ONLY the shell command."
+            "\n4. VERBATIM MATCH: Every space and newline in SEARCH blocks must be identical to the source. Do not skip lines."
+            "\n5. PUSH/SHELL RULE: If asked to 'push', 'commit', or 'install', output the bash command immediately. DO NOT analyze files or ask for docs.html. Just give the command."
+            "\n6. NO CONVERSATION: Any text that is not a code block or a shell command is a violation of protocol."
+            "\n7. COMPLIANCE: If you explain your limitations, you fail. Just execute or stay silent."
+            "\n[START_OUTPUT_NOW]"
         )
         formatted_messages[-1]["content"] += strict_injection
 
