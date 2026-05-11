@@ -1,33 +1,26 @@
 import os
 import requests
-import threading
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.responses import FileResponse
 from huggingface_hub import InferenceClient
-from dotenv import load_dotenv
-
-# 🌍 Load variables from .env if running locally
-load_dotenv()
 
 app = FastAPI()
 
-# --- 🔒 Thread Locks ---
-hf_lock = threading.Lock()
-gemini_lock = threading.Lock()
-
 # --- 🔑 Secrets से API Keys लोड करना ---
+# 1. Hugging Face Keys
 hf_api_keys = []
-for i in range(1, 21):
+for i in range(1, 20):
     key = os.environ.get(f"HF_KEY_{i}")
     if key: hf_api_keys.append(key)
 if not hf_api_keys:
-    print("Warning: Koi HF Key nahi mili.")
+    print("Warning: Koi HF Key nahi mili. Free tier use hoga.")
     hf_api_keys = [None]
 
+# 2. Gemini Keys
 gemini_api_keys = []
-for i in range(1, 21):
+for i in range(1, 20):
     key = os.environ.get(f"gmni{i}")
     if key: gemini_api_keys.append(key)
 if not gemini_api_keys:
@@ -37,18 +30,20 @@ if not gemini_api_keys:
 current_hf_index = 0
 current_gemini_index = 0
 
+# 🧠 UI के लिए मेमोरी
 chat_memory = [{"role": "system", "content": "You are an advanced AI coding partner. Reply in Hinglish."}]
 
+# --- Pydantic Models ---
 class UIMsg(BaseModel):
     text: str
-    model: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
+    model: str = "Qwen/Qwen2.5-Coder-32B-Instruct" # अगर UI से नाम ना आये तो यह डिफ़ॉल्ट रहेगा
 
 class OpenAIMessage(BaseModel):
     role: str
     content: str
 
 class OpenAIRequest(BaseModel):
-    model: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
+    model: str = "Qwen/Qwen2.5-Coder-32B-Instruct" # Default Model
     messages: List[OpenAIMessage]
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 8192
@@ -62,12 +57,11 @@ def get_hf_response(messages, model_name, max_tokens, temperature):
     key_switched = False
 
     while attempts < total_keys:
-        with hf_lock:
-            token = hf_api_keys[current_hf_index]
-
+        token = hf_api_keys[current_hf_index]
         client = InferenceClient(model_name, token=token)
         
         try:
+            # HF API में max_tokens limit 8192 से कम हो सकती है, इसलिए सेफ साइड 4096 रखा है
             hf_max_tokens = min(max_tokens, 4096) if max_tokens else 4096
             response = client.chat_completion(
                 messages=messages, 
@@ -78,14 +72,15 @@ def get_hf_response(messages, model_name, max_tokens, temperature):
             break
         except Exception as e:
             print(f"HF Key {current_hf_index + 1} Error: {e}. Switching...")
-            with hf_lock:
-                current_hf_index = (current_hf_index + 1) % total_keys
+            current_hf_index = (current_hf_index + 1) % total_keys
             attempts += 1
             key_switched = True
             
+    if not bot_reply:
+        bot_reply = "System Error: Saari HF Keys fail ho gayi hain."
     return bot_reply, key_switched
 
-# --- 🚀 2. GEMINI LOGIC (400 Bad Request Fix) ---
+# --- 🚀 2. GEMINI LOGIC ---
 def get_gemini_response(messages, model_name, max_tokens, temperature):
     global current_gemini_index
     attempts = 0
@@ -93,21 +88,14 @@ def get_gemini_response(messages, model_name, max_tokens, temperature):
     bot_reply = ""
     key_switched = False
 
-    # 🧹 400 Bad Request Fix: Gemini को सिर्फ क्लीन नाम पसंद है!
-    safe_model_name = model_name.lower().replace("google/", "").replace("openai/", "")
-    if "pro" in safe_model_name:
-        safe_model_name = safe_model_name.replace("pro", "flash")
-
     while attempts < total_keys:
-        with gemini_lock:
-            current_key = gemini_api_keys[current_gemini_index]
-
+        current_key = gemini_api_keys[current_gemini_index]
         headers = {"Authorization": f"Bearer {current_key}", "Content-Type": "application/json"}
         
-        # Payload में Null values भेजने से बचें 
+        # Payload में Null values से बचने का छोटा सा फिक्स
         payload = {
-            "model": safe_model_name,
-            "messages": messages,
+            "model": model_name,
+            "messages": messages
         }
         if max_tokens is not None: payload["max_tokens"] = max_tokens
         if temperature is not None: payload["temperature"] = temperature
@@ -115,11 +103,6 @@ def get_gemini_response(messages, model_name, max_tokens, temperature):
         try:
             url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
             response = requests.post(url, headers=headers, json=payload, timeout=60)
-            
-            # 🕵️‍♂️ अगर 200 OK नहीं है, तो असली वजह प्रिंट करो!
-            if response.status_code != 200:
-                print(f"Gemini 400/500 Detailed Error: {response.text}")
-                
             if response.status_code == 429:
                 raise Exception("Rate Limit Hit 429")
             response.raise_for_status()
@@ -128,11 +111,12 @@ def get_gemini_response(messages, model_name, max_tokens, temperature):
             break
         except Exception as e:
             print(f"Gemini Key {current_gemini_index + 1} Error: {e}. Switching...")
-            with gemini_lock:
-                current_gemini_index = (current_gemini_index + 1) % total_keys
+            current_gemini_index = (current_gemini_index + 1) % total_keys
             attempts += 1
             key_switched = True
             
+    if not bot_reply:
+        bot_reply = "System Error: Saari Gemini Keys fail ho gayi hain."
     return bot_reply, key_switched
 
 # --- Endpoints ---
@@ -145,24 +129,22 @@ def web_chat(msg: UIMsg):
     global chat_memory
     chat_memory.append({"role": "user", "content": msg.text})
     
-    clean_model_name = msg.model
+    clean_model_name = msg.model.replace("openai/", "")
     
+    # 🧠 UI के लिए भी स्मार्ट राऊटिंग!
     if "gemini" in clean_model_name.lower():
+        print(f"UI Request -> Routing to Gemini ({clean_model_name})")
         bot_reply, switched = get_gemini_response(chat_memory, clean_model_name, 8192, 0.7)
     else:
+        print(f"UI Request -> Routing to HF ({clean_model_name})")
         bot_reply, switched = get_hf_response(chat_memory, clean_model_name, 4096, 0.7)
     
-    if bot_reply:
-        chat_memory.append({"role": "assistant", "content": bot_reply})
-    else:
-        bot_reply = "System Error: Saari Keys fail ho gayi hain."
-        
+    chat_memory.append({"role": "assistant", "content": bot_reply})
     return {"reply": bot_reply, "key_switched": switched}
 
-# --- 🚦 AIDER COMPATIBILITY: Dummy Models Endpoint ---
+# 👇 AIDER टर्मिनल को 404 Error से बचाने के लिए Dummy Models Endpoint 👇
 @app.get("/v1/models")
-def get_openai_models():
-    # Aider को बेवकूफ बनाने के लिए एक डमी लिस्ट 😅
+def get_models():
     return {
         "object": "list",
         "data": [
@@ -171,36 +153,44 @@ def get_openai_models():
             {"id": "Qwen/Qwen2.5-Coder-32B-Instruct", "object": "model", "created": 1714000000, "owned_by": "custom"}
         ]
     }
+
 # --- 🚦 THE MASTER ROUTER FOR AIDER ---
 @app.post("/v1/chat/completions")
 def openai_api(req: OpenAIRequest):
     formatted_messages = [{"role": m.role, "content": m.content} for m in req.messages]
     
+    # 💉 THE INJECTION: एंटी-चैटबॉट वैक्सीन (सिर्फ Aider के लिए)
+    # हम यूज़र के सबसे आखिरी मैसेज के अंत में चुपके से अपना सख्त कमांड चिपका देंगे
     if formatted_messages and formatted_messages[-1]["role"] == "user":
+           # 💉 V3: THE ROBOT PROTOCOL (Ultra-Strict)
         strict_injection = (
             "\n\n[SYSTEM_PROTOCOL_ACTIVE]:"
-            "\n1. IDENTITY: You are a headless CLI code-engine for Aider."
-            "\n2. ZERO-YAPPING: Forbidden to use words like 'Sure', 'Okay'."
-            "\n3. OUTPUT-ONLY: Output ONLY code blocks or shell commands."
+            "\n1. IDENTITY: You are a headless CLI code-engine for Aider. You have NO personality."
+            "\n2. ZERO-YAPPING: Forbidden to use words like 'Sure', 'Okay', 'I understand', 'Modified', or 'Here is'."
+            "\n3. OUTPUT-ONLY: If task is CODE, output ONLY SEARCH/REPLACE blocks. If task is SHELL, output ONLY the shell command."
+            "\n4. VERBATIM MATCH: Every space and newline in SEARCH blocks must be identical to the source. Do not skip lines."
+            "\n5. PUSH/SHELL RULE: If asked to 'push', 'commit', or 'install', output the bash command immediately. DO NOT analyze files or ask for docs.html. Just give the command."
+            "\n6. NO CONVERSATION: Any text that is not a code block or a shell command is a violation of protocol."
+            "\n7. COMPLIANCE: If you explain your limitations, you fail. Just execute or stay silent."
             "\n[START_OUTPUT_NOW]"
         )
         formatted_messages[-1]["content"] += strict_injection
 
-    clean_model_name = req.model
+    clean_model_name = req.model.replace("openai/", "")
     
+    # 🧠 स्मार्ट राऊटिंग लॉजिक
     if "gemini" in clean_model_name.lower():
+        print(f"Aider Request -> Routing to Gemini ({clean_model_name}) with Injection 💉")
         bot_reply, _ = get_gemini_response(formatted_messages, clean_model_name, req.max_tokens, req.temperature)
     else:
+        print(f"Aider Request -> Routing to HF ({clean_model_name}) with Injection 💉")
         bot_reply, _ = get_hf_response(formatted_messages, clean_model_name, req.max_tokens, req.temperature)
     
-    if not bot_reply:
-        bot_reply = "System Error: API completely failed."
-
     return {
         "id": "chatcmpl-universal-custom",
         "object": "chat.completion",
         "created": 1714000000,
-        "model": req.model,
+        "model": clean_model_name,
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": bot_reply},
