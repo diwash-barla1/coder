@@ -9,12 +9,15 @@ from huggingface_hub import InferenceClient
 
 app = FastAPI()
 
-# --- 🔒 Thread Locks (Concurrent Requests को सेफ रखने के लिए) ---
+# --- 🔒 Thread Locks ---
 hf_lock = threading.Lock()
 gemini_lock = threading.Lock()
 
+# --- 🎯 Allowed Gemini Models (सिर्फ Flash मॉडल्स की अनुमति) ---
+ALLOWED_GEMINI_MODELS = ["gemini-3-flash-preview", "gemini-2.5-flash"]
+DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+
 # --- 🔑 Secrets से API Keys लोड करना ---
-# 1. Hugging Face Keys (1 से 20 तक)
 hf_api_keys = []
 for i in range(1, 21):
     key = os.environ.get(f"HF_KEY_{i}")
@@ -23,7 +26,6 @@ if not hf_api_keys:
     print("Warning: Koi HF Key nahi mili. Free tier use hoga.")
     hf_api_keys = [None]
 
-# 2. Gemini Keys (1 से 20 तक)
 gemini_api_keys = []
 for i in range(1, 21):
     key = os.environ.get(f"gmni{i}")
@@ -35,10 +37,8 @@ if not gemini_api_keys:
 current_hf_index = 0
 current_gemini_index = 0
 
-# 🧠 UI के लिए मेमोरी
 chat_memory = [{"role": "system", "content": "You are an advanced AI coding partner. Reply in Hinglish."}]
 
-# --- Pydantic Models ---
 class UIMsg(BaseModel):
     text: str
     model: str = "Qwen/Qwen2.5-Coder-32B-Instruct"
@@ -53,7 +53,7 @@ class OpenAIRequest(BaseModel):
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 8192
 
-# --- 🚀 1. HUGGING FACE LOGIC (Round-Robin) ---
+# --- 🚀 1. HUGGING FACE LOGIC ---
 def get_hf_response(messages, model_name, max_tokens, temperature):
     global current_hf_index
     attempts = 0
@@ -64,7 +64,6 @@ def get_hf_response(messages, model_name, max_tokens, temperature):
     while attempts < total_keys:
         with hf_lock:
             token = hf_api_keys[current_hf_index]
-            # सक्सेस या फेल होने पर अगली बार के लिए इंडेक्स पहले ही बढ़ा लें
             current_index = current_hf_index
             current_hf_index = (current_hf_index + 1) % total_keys
 
@@ -78,7 +77,7 @@ def get_hf_response(messages, model_name, max_tokens, temperature):
                 temperature=temperature
             )
             bot_reply = response.choices[0].message.content
-            break  # सक्सेस हो गया, लूप से बाहर आएं
+            break
             
         except Exception as e:
             print(f"HF Key {current_index + 1} Error: {e}. Switching...")
@@ -89,7 +88,7 @@ def get_hf_response(messages, model_name, max_tokens, temperature):
         bot_reply = "System Error: Saari HF Keys fail ho gayi hain."
     return bot_reply, key_switched
 
-# --- 🚀 2. GEMINI LOGIC (Round-Robin) ---
+# --- 🚀 2. GEMINI LOGIC ---
 def get_gemini_response(messages, model_name, max_tokens, temperature):
     global current_gemini_index
     attempts = 0
@@ -100,7 +99,6 @@ def get_gemini_response(messages, model_name, max_tokens, temperature):
     while attempts < total_keys:
         with gemini_lock:
             current_key = gemini_api_keys[current_gemini_index]
-            # सक्सेस या फेल होने पर अगली बार के लिए इंडेक्स पहले ही बढ़ा लें
             current_index = current_gemini_index
             current_gemini_index = (current_gemini_index + 1) % total_keys
 
@@ -120,7 +118,7 @@ def get_gemini_response(messages, model_name, max_tokens, temperature):
             response.raise_for_status()
             
             bot_reply = response.json()['choices'][0]['message']['content']
-            break  # सक्सेस हो गया, लूप से बाहर आएं
+            break
             
         except Exception as e:
             print(f"Gemini Key {current_index + 1} Error: {e}. Switching...")
@@ -130,6 +128,14 @@ def get_gemini_response(messages, model_name, max_tokens, temperature):
     if not bot_reply:
         bot_reply = "System Error: Saari Gemini Keys fail ho gayi hain."
     return bot_reply, key_switched
+
+# --- 🚦 HELPER: Model Validator ---
+def validate_gemini_model(model_name: str) -> str:
+    """Check karta hai ki model allowed list mein hai ya nahi."""
+    if "pro" in model_name.lower() or model_name not in ALLOWED_GEMINI_MODELS:
+        print(f"⚠️ Warning: '{model_name}' blocked! Forcefully downgrading to '{DEFAULT_GEMINI_MODEL}'.")
+        return DEFAULT_GEMINI_MODEL
+    return model_name
 
 # --- Endpoints ---
 @app.get("/")
@@ -144,8 +150,10 @@ def web_chat(msg: UIMsg):
     clean_model_name = msg.model.replace("openai/", "")
     
     if "gemini" in clean_model_name.lower():
-        print(f"UI Request -> Routing to Gemini ({clean_model_name})")
-        bot_reply, switched = get_gemini_response(chat_memory, clean_model_name, 8192, 0.7)
+        # 👇 यहाँ मॉडल चेक होगा
+        safe_model_name = validate_gemini_model(clean_model_name)
+        print(f"UI Request -> Routing to Gemini ({safe_model_name})")
+        bot_reply, switched = get_gemini_response(chat_memory, safe_model_name, 8192, 0.7)
     else:
         print(f"UI Request -> Routing to HF ({clean_model_name})")
         bot_reply, switched = get_hf_response(chat_memory, clean_model_name, 4096, 0.7)
@@ -158,7 +166,6 @@ def web_chat(msg: UIMsg):
 def openai_api(req: OpenAIRequest):
     formatted_messages = [{"role": m.role, "content": m.content} for m in req.messages]
     
-    # 💉 THE INJECTION: एंटी-चैटबॉट वैक्सीन (सिर्फ Aider के लिए)
     if formatted_messages and formatted_messages[-1]["role"] == "user":
         strict_injection = (
             "\n\n[SYSTEM_PROTOCOL_ACTIVE]:"
@@ -176,8 +183,10 @@ def openai_api(req: OpenAIRequest):
     clean_model_name = req.model.replace("openai/", "")
     
     if "gemini" in clean_model_name.lower():
-        print(f"Aider Request -> Routing to Gemini ({clean_model_name}) with Injection 💉")
-        bot_reply, _ = get_gemini_response(formatted_messages, clean_model_name, req.max_tokens, req.temperature)
+        # 👇 यहाँ मॉडल चेक होगा
+        safe_model_name = validate_gemini_model(clean_model_name)
+        print(f"Aider Request -> Routing to Gemini ({safe_model_name}) with Injection 💉")
+        bot_reply, _ = get_gemini_response(formatted_messages, safe_model_name, req.max_tokens, req.temperature)
     else:
         print(f"Aider Request -> Routing to HF ({clean_model_name}) with Injection 💉")
         bot_reply, _ = get_hf_response(formatted_messages, clean_model_name, req.max_tokens, req.temperature)
@@ -186,7 +195,7 @@ def openai_api(req: OpenAIRequest):
         "id": "chatcmpl-universal-custom",
         "object": "chat.completion",
         "created": 1714000000,
-        "model": clean_model_name,
+        "model": clean_model_name, # Aider को वही मॉडल नाम वापस भेजेंगे जो उसने माँगा था, ताकि वो कंफ्यूज़ ना हो
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": bot_reply},
