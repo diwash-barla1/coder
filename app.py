@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.responses import FileResponse
 from huggingface_hub import InferenceClient
+from dotenv import load_dotenv
+load_dotenv()
 
 app = FastAPI()
 
