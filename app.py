@@ -159,6 +159,18 @@ def web_chat(msg: UIMsg):
         
     return {"reply": bot_reply, "key_switched": switched}
 
+# --- 🚦 AIDER COMPATIBILITY: Dummy Models Endpoint ---
+@app.get("/v1/models")
+def get_openai_models():
+    # Aider को बेवकूफ बनाने के लिए एक डमी लिस्ट 😅
+    return {
+        "object": "list",
+        "data": [
+            {"id": "gemini-2.5-flash", "object": "model", "created": 1714000000, "owned_by": "custom"},
+            {"id": "gemini-3-flash-preview", "object": "model", "created": 1714000000, "owned_by": "custom"},
+            {"id": "Qwen/Qwen2.5-Coder-32B-Instruct", "object": "model", "created": 1714000000, "owned_by": "custom"}
+        ]
+    }
 # --- 🚦 THE MASTER ROUTER FOR AIDER ---
 @app.post("/v1/chat/completions")
 def openai_api(req: OpenAIRequest):
